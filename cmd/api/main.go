@@ -6,9 +6,21 @@ import (
 
 	_ "github.com/joho/godotenv/autoload" // Automatically loads environment variables
 	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/schlafer/EventApp/docs"
 	"github.com/schlafer/EventApp/internal/database"
 	"github.com/schlafer/EventApp/internal/env"
 )
+
+// @title EventApp API Documentation
+// @version 1.0
+// @description A rest API in Go using Gin framework.
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter your bearer token in the format **Bearer &lt;token&gt;**
+
+// Apply the security definition to your endpoints
+// @security BearerAuth
 
 type application struct {
 	port      int
