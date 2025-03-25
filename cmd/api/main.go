@@ -28,7 +28,7 @@ func main() {
 
 	app := &application{
 		port:      env.GetEnvInt("PORT", 8080),
-		jwtSecret: env.GetEnvString("JWT_SECRET", "some-secret-1213123"),
+		jwtSecret: env.GetEnvString("JWT_SECRET", "123secret"),
 		models:    models,
 	}
 
