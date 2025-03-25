@@ -14,3 +14,9 @@ type Event struct {
 	Date        string `json:"date" binding:"required,datetime=2006-01-02"`
 	Location    string `json:"location" binding:"required,min=3"`
 }
+
+/*
+The Event struct includes five fields: Id, OwnerId, Name, Description, Date, and Location.
+We set binding tags and some validation rules. These will used later when creating an event and binding the request body to the Event struct. This is done by the Gin framework.
+For now we set a binding tag on the OwnerId field. Later we will remove it and instead use the current logged in user.
+*/
