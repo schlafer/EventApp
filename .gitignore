@@ -33,3 +33,5 @@ go.work.sum
 
 # Environment variables
 .env
+
+tmp/
