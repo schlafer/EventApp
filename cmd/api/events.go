@@ -7,73 +7,102 @@ import (
 	"github.com/schlafer/EventApp/internal/database"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/joho/godotenv/autoload"
+	_ "github.com/mattn/go-sqlite3"
 )
 
+// GetEvents returns all events
+//
+//	@Summary		Returns all events
+//	@Description	Returns all events
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Success		200		{object}	[]database.Event
+//	@Router			/api/v1/events [get]
+func (app *application) getAllEvents(c *gin.Context) {
+	events, err := app.models.Events.GetAll()
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retreive events"})
+	}
+
+	c.JSON(http.StatusOK, events)
+}
+
+// GetEvent returns a single event
+//
+//	@Summary		Returns a single event
+//	@Description	Returns a single event
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		int	true	"Event ID"
+//	@Success		200	{object}	database.Event
+//	@Router			/api/v1/events/{id} [get]
+func (app *application) getEvent(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+	}
+
+	event, err := app.models.Events.Get(id)
+
+	if event == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retreive event"})
+	}
+
+	c.JSON(http.StatusOK, event)
+}
+
+// CreateEvent creates a new event
+//
+//	@Summary		Creates a new event
+//	@Description	Creates a new event
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			event	body		database.Event	true	"Event"
+//	@Success		201		{object}	database.Event
+//	@Router			/api/v1/events [post]
+//	@Security		BearerAuth
 func (app *application) createEvent(c *gin.Context) {
 	var event database.Event
+
 	if err := c.ShouldBindJSON(&event); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	user := app.GetUserFromContext(c)
+	event.OwnerId = user.Id
+
 	err := app.models.Events.Insert(&event)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create event"})
 		return
 	}
+
 	c.JSON(http.StatusCreated, event)
 }
 
-/*
-This handler manages the creation of a new event.
-It binds the incoming JSON request body to an Event struct,
-validates the data, and calls the Insert method on the EventModel
-to add the event to the database.
-If successful, it returns a 201 Created status with the created event data.
-*/
-
-func (app *application) getAllEvents(c *gin.Context) {
-	events, err := app.models.Events.GetAll()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve events"})
-		return
-	}
-	c.JSON(http.StatusOK, events)
-}
-
-/*
-This handler retrieves all events.
-It calls the GetAll method on the EventModel to fetch all events from the database.
-If successful, it returns a 200 OK status with the list of events.
-*/
-
-func (app *application) getEvent(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
-		return
-	}
-	event, err := app.models.Events.Get(id)
-
-	if event == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
-		return
-	}
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve event"})
-		return
-	}
-	c.JSON(http.StatusOK, event)
-}
-
-/*
-This handler retrieves a specific event by its ID.
-It extracts the event ID from the URL parameters, validates it,
-and calls the Get method on the EventModel to fetch the event from the database.
-If the event is found, it returns a 200 OK status with the event data
-else it returns a 404 Not Found status.
-*/
-
+// UpdateEvent updates an existing event
+//
+//	@Summary		Updates an existing event
+//	@Description	Updates an existing event
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		int	true	"Event ID"
+//	@Param			event	body		database.Event	true	"Event"
+//	@Success		200	{object}	database.Event
+//	@Router			/api/v1/events/{id} [put]
+//	@Security		BearerAuth
 func (app *application) updateEvent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -81,10 +110,11 @@ func (app *application) updateEvent(c *gin.Context) {
 		return
 	}
 
+	user := app.GetUserFromContext(c)
 	existingEvent, err := app.models.Events.Get(id)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve event"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retreive event"})
 		return
 	}
 
@@ -93,89 +123,149 @@ func (app *application) updateEvent(c *gin.Context) {
 		return
 	}
 
-	updateEvent := &database.Event{}
+	if existingEvent.OwnerId != user.Id {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to update this event"})
+		return
+	}
 
-	if err := c.ShouldBindJSON(&updateEvent); err != nil {
+	updatedEvent := &database.Event{}
+
+	if err := c.ShouldBindJSON(updatedEvent); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	updateEvent.Id = id
+	updatedEvent.Id = id
 
-	if err := app.models.Events.Update(updateEvent); err != nil {
+	if err := app.models.Events.Update(updatedEvent); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update event"})
 		return
 	}
 
-	c.JSON(http.StatusOK, updateEvent)
+	c.JSON(http.StatusOK, updatedEvent)
 }
 
-/*
-This handler updates an existing event.
-It extracts and validates the event ID from the URL parameters,
-checks if the event exists,
-binds the incoming JSON request body to an Event struct,
-and calls the Update method on the EventModel to update the event in the database.
-If successful, it returns a 200 OK status with the updated event data.
-*/
-
+// DeleteEvent deletes an existing event
+//
+//	@Summary		Deletes an existing event
+//	@Description	Deletes an existing event
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		int	true	"Event ID"
+//	@Success		204
+//	@Router			/api/v1/events/{id} [delete]
+//	@Security		BearerAuth
 func (app *application) deleteEvent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"Error": "Invalid event ID"})
+	}
+
+	user := app.GetUserFromContext(c)
+	existingEvent, err := app.models.Events.Get(id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": "Failed to retreive event"})
 		return
 	}
+
+	if existingEvent == nil {
+		c.JSON(http.StatusNotFound, gin.H{"Error": "Event not found"})
+		return
+	}
+
+	if existingEvent.OwnerId != user.Id {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to delete this event"})
+		return
+	}
+
 	if err := app.models.Events.Delete(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete event"})
-		return
 	}
+
 	c.JSON(http.StatusNoContent, nil)
 }
 
-/*
-This handler deletes a specific event by its ID.
-It extracts and validates the event ID from the URL parameters
-and calls the Delete method on the EventModel
-to remove the event from the database.
-If successful, it returns a 204 No Content status.
-*/
+// GetAttendeesForEvent returns all attendees for a given event
+//
+//	@Summary		Returns all attendees for a given event
+//	@Description	Returns all attendees for a given event
+//	@Tags			attendees
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		int	true	"Event ID"
+//	@Success		200	{object}	[]database.User
+//	@Router			/api/v1/events/{id}/attendees [get]
+func (app *application) getAttendeesForEvent(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event id"})
+		return
+	}
 
+	users, err := app.models.Attendees.GetAttendeesByEvent(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to to retreive attendees for events"})
+		return
+	}
+
+	c.JSON(http.StatusOK, users)
+}
+
+// AddAttendeeToEvent adds an attendee to an event
+// @Summary		Adds an attendee to an event
+// @Description	Adds an attendee to an event
+// @Tags			attendees
+// @Accept			json
+// @Produce		json
+// @Param			id	path		int	true	"Event ID"
+// @Param			userId	path		int	true	"User ID"
+// @Success		201		{object}	database.Attendee
+// @Router			/api/v1/events/{id}/attendees/{userId} [post]
+// @Security		BearerAuth
 func (app *application) addAttendeeToEvent(c *gin.Context) {
 	eventId, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event Id"})
 		return
 	}
 
 	userId, err := strconv.Atoi(c.Param("userId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user Id"})
 		return
 	}
 
 	event, err := app.models.Events.Get(eventId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve event"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retreive event"})
 		return
 	}
 	if event == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
-		return
 	}
 
 	userToAdd, err := app.models.Users.Get(userId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retreive user"})
 		return
 	}
+
 	if userToAdd == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+	}
+
+	user := app.GetUserFromContext(c)
+
+	if event.OwnerId != user.Id {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to add an attendee"})
 		return
 	}
 
 	existingAttendee, err := app.models.Attendees.GetByEventAndAttendee(event.Id, userToAdd.Id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve attendee"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retreive attendee"})
 		return
 	}
 	if existingAttendee != nil {
@@ -190,64 +280,77 @@ func (app *application) addAttendeeToEvent(c *gin.Context) {
 
 	_, err = app.models.Attendees.Insert(&attendee)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add attendee"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add  attendee"})
 		return
 	}
 
 	c.JSON(http.StatusCreated, attendee)
+
 }
 
-/*
-c.Param("id") and c.Param("userId") are used to extract URL parameters
-for the event and user IDs, respectively.
-The function checks if the event and user exist in the database.
-If not, it returns a 404 Not Found response.
-It verifies if the attendee already exists for the event.
-If so, it returns a 409 Conflict response.
-The Insert method is called to add the attendee to the database if all checks pass.
-If any operation fails, appropriate HTTP error responses are returned.
-*/
-
-func (app *application) getAttendeesForEvent(c *gin.Context) {
+// GetEventsByAttendee returns all events for a given attendee
+//
+//	@Summary		Returns all events for a given attendee
+//	@Description	Returns all events for a given attendee
+//	@Tags			attendees
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		int	true	"Attendee ID"
+//	@Success		200	{object}	[]database.Event
+//	@Router			/api/v1/attendees/{id}/events [get]
+func (app *application) getEventsByAttendee(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid attendee id"})
 		return
 	}
-
-	users, err := app.models.Attendees.GetAttendeesByEvent(id)
+	events, err := app.models.Attendees.GetEventsByAttendee(id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get events"})
 		return
 	}
 
-	c.JSON(http.StatusOK, users)
+	c.JSON(http.StatusOK, events)
 }
 
-/*
-The method extracts the event ID from the URL parameters using c.Param("id")
-and converts it to an integer.
-If the conversion fails, it returns a 400 Bad Request response indicating
-an invalid event ID.
-It calls the GetAttendeesByEvent method from the Attendees model
-to fetch a list of users attending the specified event.
-If an error occurs during data retrieval,
-a 500 Internal Server Error response is returned with the error message.
-If the data retrieval is successful,
-a 200 OK response is returned along with the list of attendees.
-*/
-
+// DeleteAttendeeFromEvent deletes an attendee from an event
+// @Summary		Deletes an attendee from an event
+// @Description	Deletes an attendee from an event
+// @Tags			attendees
+// @Accept			json
+// @Produce		json
+// @Param			id	path		int	true	"Event ID"
+// @Param			userId	path		int	true	"User ID"
+// @Success		204
+// @Router			/api/v1/events/{id}/attendees/{userId} [delete]
+// @Security		BearerAuth
 func (app *application) deleteAttendeeFromEvent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event id"})
 		return
 	}
 
 	userId, err := strconv.Atoi(c.Param("userId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user id"})
 		return
+	}
+
+	event, err := app.models.Events.Get(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong"})
+		return
+	}
+
+	if event == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		return
+	}
+
+	user := app.GetUserFromContext(c)
+	if event.OwnerId != user.Id {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "You are not authorized to delete an attendeeFromEvent"})
 	}
 
 	err = app.models.Attendees.Delete(userId, id)
@@ -257,40 +360,4 @@ func (app *application) deleteAttendeeFromEvent(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusNoContent, nil)
-
 }
-
-/*
-Extracts id (attendee ID) and eventId from the URL parameters.
-Validates the IDs and returns a 400 Bad Request if they are invalid.
-Calls the Delete method on the AttendeeModel to remove the attendee.
-Returns a 204 No Content status if the operation is successful,
-indicating that the request was successful but there is no content to send back.
-If any errors occur during the deletion process,
-an appropriate error message is returned to the client.
-*/
-
-func (app *application) getEventsByAttendee(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid attendee ID"})
-		return
-	}
-
-	events, err := app.models.Events.GetByAttendee(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, events)
-}
-
-/*
-This function retrieves all events an attendee is attending.
-It extracts id (attendee ID) from the URL parameters.
-Validates the ID and returns a 400 Bad Request if it is invalid.
-Calls the GetByAttendee method on the EventModel to fetch the events.
-Returns a 200 OK status with the list of events if the operation is successful.
-If any errors occur during the retrieval process,
-an appropriate error message is returned to the client.
-*/
