@@ -7,7 +7,7 @@ import (
 	"github.com/schlafer/EventApp/internal/database"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
