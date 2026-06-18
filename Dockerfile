@@ -15,7 +15,7 @@ COPY . .
 
 # Build the application
 # Adjust the path to your main.go file
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api/main.go
+# RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api/main.go
 
 # Use a minimal Alpine image for the runtime environment
 FROM alpine:3.20
@@ -27,10 +27,10 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /usr/bin
 
 # Copy the pre-built binary from the previous stage
-COPY --from=builder /go/src/github.com/schlafer/EventApp/main ./app
+# COPY --from=builder /go/src/github.com/schlafer/EventApp/main ./app
 
 # Expose port (change to your API's port)
 EXPOSE 8080
 
 # Command to run the executable
-CMD ["./app"]
+# CMD ["./app"]
